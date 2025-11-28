@@ -1,6 +1,6 @@
 # ==========================================
-# Interactive Dashboard (Final Polish)
-# Features: Upright 3D Globe, Click-Event, Full Screen
+# Interactive Dashboard (Cinematic Control Version)
+# Features: Locked Axis, Slider Rotation, Click-Event
 # ==========================================
 import streamlit as st
 import pandas as pd
@@ -67,49 +67,71 @@ def update_from_sidebar():
     st.session_state.target_country = st.session_state.sidebar_selection
 
 # ==========================================
-# 5. The 3D Globe (Upright Fixed)
+# 5. The 3D Globe (Cinematic Control)
 # ==========================================
 st.title("🌍 Global Social Trends & AI Analytics")
 
-# Create 3D Map
-fig_map = px.choropleth(
-    df, 
-    locations="Country", 
-    locationmode="country names",
-    color="Score",
-    hover_name="Country",
-    color_continuous_scale='Plasma',
-    title="", 
-    labels={'Score': 'Happiness'},
-    projection="orthographic"
-)
+# Layout for Map Controls
+col_map, col_ctrl = st.columns([5, 1])
 
-# --- VISUAL TWEAKS ---
-fig_map.update_layout(
-    height=800,
-    margin={"r":0,"t":0,"l":0,"b":0},
-    geo=dict(
-        showframe=False,
-        showcoastlines=False,
-        bgcolor='rgba(0,0,0,0)', 
-        showocean=True,
-        oceancolor="#1E1E1E",
-        projection_scale=1.0,
-        # 🛡️ FORCE UPRIGHT ORIENTATION
-        # This ensures the globe starts perfectly vertical
-        projection_rotation=dict(lon=0, lat=0, roll=0) 
-    ),
-)
+with col_map:
+    # --- THE HACK: SLIDER ROTATION ---
+    # We use a slider to control the longitude (rotation)
+    # This ensures the earth only spins horizontally!
+    rotation_val = st.slider(
+        "🌐 Rotation Control (Spin the Globe)", 
+        min_value=-180, 
+        max_value=180, 
+        value=0, 
+        step=5,
+        label_visibility="collapsed" # Hide label for cleaner look
+    )
 
-# *** INTERACTIVE EVENT ***
-selection = st.plotly_chart(
-    fig_map, 
-    use_container_width=True, 
-    on_select="rerun", 
-    selection_mode="points",
-    # Disable scroll zoom to prevent accidental resizing
-    config={'scrollZoom': False, 'displayModeBar': False} 
-)
+    # Create 3D Map
+    fig_map = px.choropleth(
+        df, 
+        locations="Country", 
+        locationmode="country names",
+        color="Score",
+        hover_name="Country",
+        color_continuous_scale='Plasma',
+        title="", 
+        labels={'Score': 'Happiness'},
+        projection="orthographic"
+    )
+
+    # --- STRICT VIEW CONTROL ---
+    fig_map.update_layout(
+        height=750,
+        margin={"r":0,"t":0,"l":0,"b":0},
+        dragmode=False, # 🔒 CRITICAL: Disable mouse drag so it doesn't tilt!
+        geo=dict(
+            showframe=False,
+            showcoastlines=False,
+            bgcolor='rgba(0,0,0,0)', 
+            showocean=True,
+            oceancolor="#1E1E1E",
+            projection_scale=1.1, # Zoom in a bit to fill space
+            # 🔒 BIND ROTATION TO SLIDER
+            projection_rotation=dict(lon=rotation_val, lat=0, roll=0) 
+        ),
+        coloraxis_colorbar=dict(
+            title="Score", 
+            thickness=15,
+            len=0.5,
+            yanchor="top", y=0.8,
+            xanchor="left", x=0.02
+        )
+    )
+
+    # *** INTERACTIVE EVENT ***
+    selection = st.plotly_chart(
+        fig_map, 
+        use_container_width=True, 
+        on_select="rerun", 
+        selection_mode="points",
+        config={'scrollZoom': False, 'displayModeBar': False} 
+    )
 
 # Handle Click
 if selection and len(selection['selection']['points']) > 0:
@@ -126,7 +148,7 @@ country_data = df[df['Country'] == current_country].iloc[0]
 st.markdown(f"### 👇 Analyzing: **{current_country}**")
 st.divider()
 
-# Sidebar Sync
+# Sidebar
 country_list = sorted(df['Country'].astype(str).unique())
 try: list_index = country_list.index(current_country)
 except: list_index = 0
@@ -134,9 +156,9 @@ except: list_index = 0
 with st.sidebar:
     st.header("Navigate")
     st.selectbox("Select Country:", country_list, index=list_index, key='sidebar_selection', on_change=update_from_sidebar)
-    st.info("💡 Tip: Click the globe to select! (Free rotation is a Plotly feature)")
+    st.info(f"💡 **Control Tip**: Use the slider above the map to spin the globe horizontally.")
 
-# Layout: Metrics + Radar + Insights
+# Layout
 c1, c2, c3, c4 = st.columns(4)
 c1.metric("😊 Happiness", f"{country_data['Score']:.2f}")
 c2.metric("💰 GDP", f"${country_data['GDP_per_Capita']:,.0f}")
@@ -146,7 +168,6 @@ c4.metric("❤️ Lifespan", f"{country_data[life_col]:.1f} yrs")
 col_L, col_R = st.columns([1, 1])
 
 with col_L:
-    # Radar Chart
     def norm(val, col):
         mn, mx = df[col].min(), df[col].max()
         return (val - mn) / (mx - mn) if mx > mn else 0
@@ -166,7 +187,7 @@ with col_L:
     radar.add_trace(go.Scatterpolar(r=vals, theta=['Economy', 'Education', 'Health'], fill='toself', name=current_country))
     radar.add_trace(go.Scatterpolar(r=avgs, theta=['Economy', 'Education', 'Health'], name='Global Avg', line_dash='dash', line_color='grey'))
     
-    # Theme-adaptive colors
+    # Theme Fix
     radar.update_layout(
         polar=dict(
             radialaxis=dict(visible=True, range=[0, 1], showticklabels=False),
@@ -180,7 +201,6 @@ with col_L:
     st.plotly_chart(radar, use_container_width=True)
 
 with col_R:
-    # AI Insights
     cluster = country_data.get('Cluster_Label', 'Unknown')
     pred = country_data.get('Predicted_Score', 0)
     
@@ -197,4 +217,3 @@ with col_R:
     * **Prediction**: Model expects **{pred:.2f}**, Actual is **{country_data['Score']:.2f}**.
     * **Strategy**: {advice}
     """)
-    st.caption(f"Analysis based on K-Means clustering (Tier) and Linear Regression (Prediction).")
